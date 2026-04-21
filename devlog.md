@@ -8,6 +8,23 @@ This document records the major technical milestones, architectural decisions, a
 
 ---
 
+## 📅 2026-04-21: Phase 15 (Security, Stability & Quality)
+ 
+### 🛡️ Repository & Data Governance
+- **Git History Reset:** Performed a complete history scrub and `git gc` optimization to remove sensitive session data and large legacy binaries. The repository size was reduced from ~500MB to <1MB.
+- **Database Reset:** Added a "Reset BBDD" feature in the Settings panel to allow users to clear their local transcription history securely from the UI.
+- **Refined .gitignore:** Implemented stricter rules to prevent accidental commits of media files (`.mp3`, `.wav`), databases (`.db`), and environmental caches.
+ 
+### 🏗️ Architectural Stability
+- **Large-Scale Text Support:** Refactored `/translate` and `/summarize` API endpoints to use **JSON Request Bodies** instead of query parameters. This eliminates the "Request URI Too Long" (HTTP 500/414) errors when processing massive transcriptions.
+- **Timeouts for Heavy Loads:** Increased all backend processing timeouts from 5m to **30m** to guarantee success in long-duration tasks.
+ 
+### 🎙️ Audio Processing & Quality
+- **Automatic Audio Chunking:** Implemented a non-destructive segmentation engine. Audios longer than 12 minutes are automatically split into **10-minute chunks** and processed sequentially. This prevents model "context drift" and ensures high accuracy even in 60+ minute recordings.
+- **Model Upgrade (Large-v3-Turbo):** Migrated the default STT engine from `medium` to `Large-v3-Turbo`. This dramatically improves Catalan transcription quality and Spanish nuances while maintaining high inference speeds on AMD iGPUs.
+- **Hallucination Prevention:** Added the `--no-context` flag to the Whisper server configuration. This fixes the common "infinite loop" bug where the model repeats the same sentence multiple times.
+- **Intelligent Auto-detection:** Standardized "Auto (Detection)" as the default language across the frontend and backend, enabling seamless switching between Spanish and Catalan.
+
 ## 📅 2026-04-08: Phase 14 (Rebranding & API Harmonization)
 
 ### 🏷️ Transition to Sonat Studio

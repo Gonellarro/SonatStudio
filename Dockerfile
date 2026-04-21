@@ -44,9 +44,11 @@ ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
 ENV GGML_VK_VISIBLE_DEVICES=0
 
 CMD ["./build/bin/whisper-server", \
-     "--model",    "models/ggml-medium-q5_0.bin", \
+     "--model",    "models/ggml-large-v3-turbo-q5_0.bin", \
      "--host",     "0.0.0.0", \
      "--port",     "8080", \
      "--language", "auto", \
      "--threads",  "4", \
+     "--no-context", \
      "--convert"]
+

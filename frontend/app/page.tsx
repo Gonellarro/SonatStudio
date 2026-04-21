@@ -20,7 +20,8 @@ export default function Dashboard() {
   const [currentResult, setCurrentResult] = useState<TranscriptionEntry | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [editingSettings, setEditingSettings] = useState<AppSettings | null>(null);
-  const [sourceLang, setSourceLang] = useState('es');
+  const [sourceLang, setSourceLang] = useState('auto');
+
   const [targetLang, setTargetLang] = useState('en');
 
   const [templates, setTemplates] = useState<SummaryTemplate[]>([]);
@@ -33,14 +34,14 @@ export default function Dashboard() {
   const [customTranslatorText, setCustomTranslatorText] = useState<string | null>(null);
 
   const LANGUAGES = [
-    { code: 'auto', name: 'Auto-detectar' },
+    { code: 'auto', name: 'Auto (Detección)' },
     { code: 'es', name: 'Español' },
-    { code: 'ca', name: 'Català' },
-    { code: 'en', name: 'English' },
-    { code: 'fr', name: 'Français' },
-    { code: 'de', name: 'Deutsch' },
+    { code: 'ca', name: 'Catalán' },
+    { code: 'en', name: 'Inglés' },
+    { code: 'fr', name: 'Francés' },
+    { code: 'de', name: 'Alemán' },
     { code: 'it', name: 'Italiano' },
-    { code: 'pt', name: 'Português' },
+    { code: 'pt', name: 'Portugués' }
   ];
 
   useEffect(() => {
@@ -1079,7 +1080,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-4 px-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Entrada por defecto</label>
                     <select
-                      value={editingSettings?.default_transcription_lang || 'es'}
+                      value={editingSettings?.default_transcription_lang || 'auto'}
                       onChange={(e) => setEditingSettings(prev => ({ ...prev!, default_transcription_lang: e.target.value }))}
                       className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs focus:ring-0 transition-all cursor-pointer font-bold appearance-none text-emerald-400"
                     >

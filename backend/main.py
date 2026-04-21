@@ -2,13 +2,20 @@ import os
 import json
 import httpx
 import uuid
+import subprocess
 from datetime import datetime
-from typing import Optional, List
+
+from typing import Optional, List, Any
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, create_engine
-from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.declarative import declarative_base
 import aiofiles
+
+
+
 
 # Config
 DATA_DIR = "/app/data"
@@ -113,7 +120,29 @@ def get_settings(db: Session):
         db.refresh(settings)
     return settings
 
+def get_audio_duration(file_path: str) -> float:
+    try:
+        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except Exception as e:
+        print(f"Error getting duration: {e}")
+        return 0
+
+# Request Models
+class TranslationRequest(BaseModel):
+    target_lang: str = "es"
+    source_lang: str = "auto"
+    custom_text: Optional[str] = None
+
+class SummarizeRequest(BaseModel):
+    template_name: str = "Resumen General"
+    template_body: str = ""
+    source: str = "transcription"
+    custom_text: Optional[str] = None
+
 # App
+
 app = FastAPI(title="Sonat Studio API")
 
 app.add_middleware(
@@ -144,44 +173,90 @@ async def transcribe(file: UploadFile = File(...), lang: str = Form("es"), db: S
         
         # Measure time
         start_time = datetime.now()
+        duration_sec = get_audio_duration(temp_path)
         
-        # Transcribe
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            with open(temp_path, "rb") as audio_f:
-                files = {"file": (file.filename, audio_f)}
-                data = {"language": lang, "response_format": "json"}
-                response = await client.post(settings.whisper_url, files=files, data=data)
+        full_text = ""
+        # Chunking strategy: if > 12 minutes (720s), split in 10m (600s) chunks
+        if duration_sec > 720:
+            print(f"Long audio detected ({duration_sec}s). Splitting into chunks...")
+            chunk_dir = f"/tmp/chunks_{file_uuid}"
+            os.makedirs(chunk_dir, exist_ok=True)
+            print(f"Directory created: {chunk_dir}")
+
             
-            if response.status_code != 200:
-                raise HTTPException(status_code=500, detail=f"Whisper error: {response.text}")
+            split_cmd = [
+                "ffmpeg", "-i", temp_path, 
+                "-f", "segment", 
+                "-segment_time", "600", 
+                "-c", "copy", 
+                f"{chunk_dir}/chunk%03d.{ext}"
+            ]
+            print(f"Running split command: {' '.join(split_cmd)}")
+            subprocess.run(split_cmd, check=True)
+            print(f"Splitting done.")
+
             
-            result = response.json()
-            text = result.get("text", "").strip()
+            chunks = sorted([f for f in os.listdir(chunk_dir) if f.startswith("chunk")])
+            texts = []
             
-            # Calculate duration
-            end_time = datetime.now()
-            processing_time = (end_time - start_time).total_seconds()
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                for chunk_file in chunks:
+                    chunk_path = os.path.join(chunk_dir, chunk_file)
+                    print(f"Transcribing {chunk_file}...")
+                    with open(chunk_path, "rb") as audio_f:
+                        files = {"file": (chunk_file, audio_f)}
+                        data = {"language": lang, "response_format": "json"}
+                        response = await client.post(settings.whisper_url, files=files, data=data)
+                    
+                    if response.status_code == 200:
+                        chunk_text = response.json().get("text", "").strip()
+                        if chunk_text:
+                            texts.append(chunk_text)
+                    
+                    os.remove(chunk_path) # Clean up chunk
             
-            # Format: "12s" or "1m 20s"
-            if processing_time < 60:
-                duration_str = f"{int(processing_time)}s"
-            else:
-                minutes = int(processing_time // 60)
-                seconds = int(processing_time % 60)
-                duration_str = f"{minutes}m {seconds}s"
-            
-            # Save to History
-            entry = TranscriptionEntry(
-                uuid=file_uuid,
-                filename=file.filename,
-                transcription=text,
-                duration=duration_str
-            )
-            db.add(entry)
-            db.commit()
-            db.refresh(entry)
-            
-            return entry
+            full_text = "\n\n".join(texts)
+            os.rmdir(chunk_dir)
+        else:
+            # Transcribe normally
+            print(f"Normal audio detected ({duration_sec}s). Transcribing directly...")
+            async with httpx.AsyncClient(timeout=1800.0) as client:
+                with open(temp_path, "rb") as audio_f:
+                    files = {"file": (file.filename, audio_f)}
+                    data = {"language": lang, "response_format": "json"}
+                    print(f"Sending to Whisper URL: {settings.whisper_url}")
+                    response = await client.post(settings.whisper_url, files=files, data=data)
+
+                
+                if response.status_code != 200:
+                    raise HTTPException(status_code=500, detail=f"Whisper error: {response.text}")
+                
+                full_text = response.json().get("text", "").strip()
+
+        # Calculate processing duration
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        
+        if processing_time < 60:
+            duration_str = f"{int(processing_time)}s"
+        else:
+            minutes = int(processing_time // 60)
+            seconds = int(processing_time % 60)
+            duration_str = f"{minutes}m {seconds}s"
+        
+        # Save to History
+        entry = TranscriptionEntry(
+            uuid=file_uuid,
+            filename=file.filename,
+            transcription=full_text,
+            duration=duration_str
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        
+        return entry
+
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -242,7 +317,8 @@ async def translate(entry_uuid: str, target_lang: str = "es", source_lang: str =
     
     try:
         start_time_translate = datetime.now()
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=1800.0) as client:
+
             model = await ensure_model(client, settings.lm_studio_url, settings.translation_model)
             print(f"Using model: {model} for translation")
             
@@ -326,7 +402,8 @@ async def summarize(entry_uuid: str, template_name: str = "Resumen General", tem
 
     try:
         start_time_sum = datetime.now()
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=1800.0) as client:
+
             model = await ensure_model(client, settings.lm_studio_url, settings.summary_model)
             
             payload = {

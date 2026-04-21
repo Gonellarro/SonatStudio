@@ -48,6 +48,11 @@ export const deleteEntry = async (uuid: string) => {
   await apiClient.delete(`/history/${uuid}`);
 };
 
+export const resetHistory = async () => {
+  await apiClient.delete('/history');
+};
+
+
 export const transcribeFile = async (file: File, lang: string = 'es') => {
   const formData = new FormData();
   formData.append('file', file);

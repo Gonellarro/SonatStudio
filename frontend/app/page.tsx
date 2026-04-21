@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { Mic, Upload, History, Languages, Trash2, Loader2, Play, Pause, Download, Sparkles, Plus, Settings, Clock, Check, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  getHistory, deleteEntry, transcribeFile, translateEntry, 
+import {
+  getHistory, deleteEntry, resetHistory, transcribeFile, translateEntry,
   summarizeEntry, getTemplates, saveTemplate, updateTemplate, deleteTemplate,
   getSettings, updateSettings, resetSettings, AppSettings, TranscriptionEntry, SummaryTemplate
 } from '@/lib/api';
+
 import clsx from 'clsx';
 
 export default function Dashboard() {
@@ -41,7 +42,7 @@ export default function Dashboard() {
     { code: 'it', name: 'Italiano' },
     { code: 'pt', name: 'Português' },
   ];
-  
+
   useEffect(() => {
     loadHistory();
     loadTemplates();
@@ -197,6 +198,22 @@ export default function Dashboard() {
     }
   };
 
+  const handleResetSettings = async () => {
+
+    if (!confirm("¿Restablecer ajustes a valores de fábrica?")) return;
+    await resetSettings();
+    await loadSettings();
+  };
+
+  const handleResetHistory = async () => {
+    if (!confirm("⚠️ ¿ESTÁS SEGURO? Se borrará TODO el historial de transcripciones, traducciones y resúmenes de forma permanente.")) return;
+    await resetHistory();
+    await loadHistory();
+    setCurrentResult(null);
+    alert("Base de datos de historial limpiada correctamente");
+  };
+
+
   // Null-safe download helper
   const downloadText = (text: string | null | undefined, title: string, suffix: string = '') => {
     if (!text) return;
@@ -223,16 +240,16 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-tight gradient-text">Sonat Studio</h1>
-          <p className="text-muted-foreground mt-1">Local Intelligence on Ryzen 8845HS</p>
+          <p className="text-muted-foreground mt-1">Inteligència artificial local</p>
         </div>
 
         <div className="flex bg-secondary p-1 rounded-xl glass border border-white/5">
           {[
-            { id: 'transcribe', icon: Mic,      label: 'Transcribir'  },
-            { id: 'translate',  icon: Languages, label: 'Traductor'    },
-            { id: 'summary',    icon: Sparkles,  label: 'Resumen'      },
-            { id: 'history',    icon: History,   label: 'Historial'    },
-            { id: 'settings',   icon: Settings,  label: 'Preferencias' },
+            { id: 'transcribe', icon: Mic, label: 'Transcribir' },
+            { id: 'translate', icon: Languages, label: 'Traductor' },
+            { id: 'summary', icon: Sparkles, label: 'Resumen' },
+            { id: 'history', icon: History, label: 'Historial' },
+            { id: 'settings', icon: Settings, label: 'Preferencias' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -273,8 +290,8 @@ export default function Dashboard() {
                   {/* Mode switcher */}
                   <div className="flex bg-secondary/50 p-1 rounded-xl glass border border-white/5 self-start">
                     {[
-                      { id: 'upload', icon: Upload, label: 'Subir Archivo'    },
-                      { id: 'live',   icon: Mic,    label: 'Dictado En Vivo'  },
+                      { id: 'upload', icon: Upload, label: 'Subir Archivo' },
+                      { id: 'live', icon: Mic, label: 'Dictado En Vivo' },
                     ].map((mode) => (
                       <button
                         key={mode.id}
@@ -473,7 +490,7 @@ export default function Dashboard() {
               {!displayEntry ? (
                 <div className="glass rounded-3xl p-12 text-center border border-white/10 min-h-[450px] flex flex-col items-center justify-center">
                   <Languages className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">No hay nada pendiente de traducir.<br/>Sube un archivo primero.</p>
+                  <p className="text-muted-foreground">No hay nada pendiente de traducir.<br />Sube un archivo primero.</p>
                 </div>
               ) : (
                 <div className="glass rounded-3xl p-8 border border-white/10 shadow-2xl">
@@ -577,8 +594,8 @@ export default function Dashboard() {
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {(history || []).filter((e: any) => e.translation).slice(0, 5).map((entry: any) => (
-                        <tr key={entry.uuid} className="group hover:bg-white/5 transition-colors cursor-pointer" onClick={() => { 
-                          setCurrentResult(entry); 
+                        <tr key={entry.uuid} className="group hover:bg-white/5 transition-colors cursor-pointer" onClick={() => {
+                          setCurrentResult(entry);
                           setCustomTranslatorText(entry.transcription || '');
                         }}>
                           <td className="px-4 py-4">
@@ -664,7 +681,7 @@ export default function Dashboard() {
                     <div className="flex flex-col gap-2">
                       {[
                         { id: 'transcription', label: 'Transcript.', icon: Mic },
-                        { id: 'translation',   label: 'Traduc.',    icon: Languages },
+                        { id: 'translation', label: 'Traduc.', icon: Languages },
                       ].map(s => (
                         <button
                           key={s.id}
@@ -908,8 +925,8 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {(history || []).map((entry: any) => (
-                      <tr 
-                        key={entry.uuid} 
+                      <tr
+                        key={entry.uuid}
                         className="group hover:bg-white/5 transition-colors cursor-pointer"
                         onClick={() => {
                           setCurrentResult(entry);
@@ -1005,157 +1022,161 @@ export default function Dashboard() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                 {/* Left: APIs (Whisper first, then LM Studio) */}
-                 <div className="flex flex-col gap-6">
-                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic border-b border-white/5 pb-2">Servidores de Inferencia (APIs)</h3>
-                    <div className="flex flex-col gap-6">
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-emerald-400/60">Servidor Whisper Pipeline (STT)</label>
-                        <input 
-                          type="text"
-                          value={editingSettings?.whisper_url || ''}
-                          onChange={(e) => setEditingSettings(prev => ({ ...prev!, whisper_url: e.target.value }))}
-                          className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-emerald-400 font-mono focus:ring-2 focus:ring-primary/40 transition-all font-bold"
-                          placeholder="http://localhost:8000"
-                        />
+                {/* Left: APIs (Whisper first, then LM Studio) */}
+                <div className="flex flex-col gap-6">
+                  <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic border-b border-white/5 pb-2">Servidores de Inferencia (APIs)</h3>
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-emerald-400/60">Servidor Whisper Pipeline (STT)</label>
+                      <input
+                        type="text"
+                        value={editingSettings?.whisper_url || ''}
+                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, whisper_url: e.target.value }))}
+                        className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-emerald-400 font-mono focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+                        placeholder="http://localhost:8000"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-primary/60">Servidor LM Studio (Traductor/Resumen)</label>
+                      <input
+                        type="text"
+                        value={editingSettings?.lm_studio_url || ''}
+                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, lm_studio_url: e.target.value }))}
+                        className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-primary font-mono focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+                        placeholder="http://192.168.1.131:1234/v1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Models (Translation first, then Summary) */}
+                <div className="flex flex-col gap-6">
+                  <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic border-b border-white/5 pb-2">Modelos Asignados</h3>
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-purple-400/60">Modelo de Traducción</label>
+                      <input
+                        type="text"
+                        value={editingSettings?.translation_model || ''}
+                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, translation_model: e.target.value }))}
+                        className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-purple-400 font-mono font-bold"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-amber-400/60">Modelo de Resumen</label>
+                      <input
+                        type="text"
+                        value={editingSettings?.summary_model || ''}
+                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, summary_model: e.target.value }))}
+                        className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-amber-400 font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Extra Defaults & Info */}
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8 bg-black/20 p-6 rounded-3xl border border-white/5 mt-4">
+                  <div className="flex items-center justify-between gap-4 px-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Entrada por defecto</label>
+                    <select
+                      value={editingSettings?.default_transcription_lang || 'es'}
+                      onChange={(e) => setEditingSettings(prev => ({ ...prev!, default_transcription_lang: e.target.value }))}
+                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs focus:ring-0 transition-all cursor-pointer font-bold appearance-none text-emerald-400"
+                    >
+                      {LANGUAGES.map(l => (
+                        <option key={l.code} value={l.code} className="bg-slate-900 text-white">{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 px-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Salida (Traductor) por defecto</label>
+                    <select
+                      value={editingSettings?.default_translation_lang || 'en'}
+                      onChange={(e) => setEditingSettings(prev => ({ ...prev!, default_translation_lang: e.target.value }))}
+                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs focus:ring-0 transition-all cursor-pointer font-bold appearance-none text-purple-400"
+                    >
+                      {LANGUAGES.filter(l => l.code !== 'auto').map(l => (
+                        <option key={l.code} value={l.code} className="bg-slate-900 text-white">{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Automation Section */}
+                <div className="md:col-span-2 bg-white/5 rounded-3xl p-8 border border-white/5 flex flex-col gap-8 shadow-inner">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-4">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic">Automatización Inteligente</h3>
+                    <div className="flex gap-2">
+                      <span className="text-[10px] text-emerald-500 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-widest">Pipeline Activo</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="flex items-center justify-between p-5 bg-black/20 rounded-2xl border border-white/5 group hover:border-primary/30 transition-all">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-bold text-white group-hover:text-primary transition-colors italic">Traductor Automático</span>
+                        <span className="text-[9px] text-muted-foreground uppercase font-medium">Disparar al acabar Whisper</span>
                       </div>
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-primary/60">Servidor LM Studio (Traductor/Resumen)</label>
-                        <input 
-                          type="text"
-                          value={editingSettings?.lm_studio_url || ''}
-                          onChange={(e) => setEditingSettings(prev => ({ ...prev!, lm_studio_url: e.target.value }))}
-                          className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-primary font-mono focus:ring-2 focus:ring-primary/40 transition-all font-bold"
-                          placeholder="http://192.168.1.131:1234/v1"
-                        />
+                      <button
+                        onClick={() => setEditingSettings(prev => ({
+                          ...prev!,
+                          auto_translate: !prev?.auto_translate,
+                          auto_summarize: prev?.auto_translate ? prev.auto_summarize : false
+                        }))}
+                        className={clsx(
+                          "w-12 h-6 rounded-full relative transition-all duration-300",
+                          editingSettings?.auto_translate ? "bg-primary" : "bg-white/10"
+                        )}
+                      >
+                        <div className={clsx(
+                          "w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300",
+                          editingSettings?.auto_translate ? "right-1" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-5 bg-black/20 rounded-2xl border border-white/5 group hover:border-amber-400/30 transition-all">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-bold text-white group-hover:text-amber-400 transition-colors italic">Generar Resumen Solo</span>
+                        <span className="text-[9px] text-muted-foreground uppercase font-medium">Auto-resumen inteligente</span>
                       </div>
+                      <button
+                        onClick={() => setEditingSettings(prev => ({
+                          ...prev!,
+                          auto_summarize: !prev?.auto_summarize,
+                          auto_translate: prev?.auto_summarize ? prev.auto_translate : false
+                        }))}
+                        className={clsx(
+                          "w-12 h-6 rounded-full relative transition-all duration-300",
+                          editingSettings?.auto_summarize ? "bg-amber-500" : "bg-white/10"
+                        )}
+                      >
+                        <div className={clsx(
+                          "w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300",
+                          editingSettings?.auto_summarize ? "right-1" : "left-1"
+                        )} />
+                      </button>
                     </div>
-                 </div>
-
-                 {/* Right: Models (Translation first, then Summary) */}
-                 <div className="flex flex-col gap-6">
-                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic border-b border-white/5 pb-2">Modelos Asignados</h3>
-                    <div className="flex flex-col gap-6">
-                       <div className="flex flex-col gap-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-purple-400/60">Modelo de Traducción</label>
-                          <input 
-                            type="text"
-                            value={editingSettings?.translation_model || ''}
-                            onChange={(e) => setEditingSettings(prev => ({ ...prev!, translation_model: e.target.value }))}
-                            className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-purple-400 font-mono font-bold"
-                          />
-                       </div>
-                       <div className="flex flex-col gap-2">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-amber-400/60">Modelo de Resumen</label>
-                          <input 
-                            type="text"
-                            value={editingSettings?.summary_model || ''}
-                            onChange={(e) => setEditingSettings(prev => ({ ...prev!, summary_model: e.target.value }))}
-                            className="bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-sm text-amber-400 font-mono font-bold"
-                          />
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* Extra Defaults & Info */}
-                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8 bg-black/20 p-6 rounded-3xl border border-white/5 mt-4">
-                    <div className="flex items-center justify-between gap-4 px-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Entrada por defecto</label>
-                       <select
-                        value={editingSettings?.default_transcription_lang || 'es'}
-                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, default_transcription_lang: e.target.value }))}
-                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs focus:ring-0 transition-all cursor-pointer font-bold appearance-none text-emerald-400"
-                       >
-                        {LANGUAGES.map(l => (
-                          <option key={l.code} value={l.code} className="bg-slate-900 text-white">{l.name}</option>
-                        ))}
-                       </select>
-                    </div>
-                    <div className="flex items-center justify-between gap-4 px-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Salida (Traductor) por defecto</label>
-                       <select
-                        value={editingSettings?.default_translation_lang || 'en'}
-                        onChange={(e) => setEditingSettings(prev => ({ ...prev!, default_translation_lang: e.target.value }))}
-                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs focus:ring-0 transition-all cursor-pointer font-bold appearance-none text-purple-400"
-                       >
-                        {LANGUAGES.filter(l => l.code !== 'auto').map(l => (
-                          <option key={l.code} value={l.code} className="bg-slate-900 text-white">{l.name}</option>
-                        ))}
-                       </select>
-                    </div>
-                 </div>
-
-                 {/* Automation Section */}
-                 <div className="md:col-span-2 bg-white/5 rounded-3xl p-8 border border-white/5 flex flex-col gap-8 shadow-inner">
-                    <div className="flex justify-between items-center border-b border-white/5 pb-4">
-                      <h3 className="text-xs font-black uppercase tracking-[0.3em] text-muted-foreground italic">Automatización Inteligente</h3>
-                      <div className="flex gap-2">
-                        <span className="text-[10px] text-emerald-500 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase tracking-widest">Pipeline Activo</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="flex items-center justify-between p-5 bg-black/20 rounded-2xl border border-white/5 group hover:border-primary/30 transition-all">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-bold text-white group-hover:text-primary transition-colors italic">Traductor Automático</span>
-                            <span className="text-[9px] text-muted-foreground uppercase font-medium">Disparar al acabar Whisper</span>
-                          </div>
-                          <button 
-                            onClick={() => setEditingSettings(prev => ({ 
-                              ...prev!, 
-                              auto_translate: !prev?.auto_translate,
-                              auto_summarize: prev?.auto_translate ? prev.auto_summarize : false
-                            }))}
-                            className={clsx(
-                              "w-12 h-6 rounded-full relative transition-all duration-300",
-                              editingSettings?.auto_translate ? "bg-primary" : "bg-white/10"
-                            )}
-                          >
-                             <div className={clsx(
-                               "w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300",
-                               editingSettings?.auto_translate ? "right-1" : "left-1"
-                             )} />
-                          </button>
-                       </div>
-
-                       <div className="flex items-center justify-between p-5 bg-black/20 rounded-2xl border border-white/5 group hover:border-amber-400/30 transition-all">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-bold text-white group-hover:text-amber-400 transition-colors italic">Generar Resumen Solo</span>
-                            <span className="text-[9px] text-muted-foreground uppercase font-medium">Auto-resumen inteligente</span>
-                          </div>
-                          <button 
-                            onClick={() => setEditingSettings(prev => ({ 
-                              ...prev!, 
-                              auto_summarize: !prev?.auto_summarize,
-                              auto_translate: prev?.auto_summarize ? prev.auto_translate : false
-                            }))}
-                            className={clsx(
-                              "w-12 h-6 rounded-full relative transition-all duration-300",
-                              editingSettings?.auto_summarize ? "bg-amber-500" : "bg-white/10"
-                            )}
-                          >
-                             <div className={clsx(
-                               "w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-300",
-                               editingSettings?.auto_summarize ? "right-1" : "left-1"
-                             )} />
-                          </button>
-                       </div>
-                    </div>
-                 </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-4 border-t border-white/10 pt-10">
-                 <button 
-                  onClick={async () => {
-                    if (!confirm("¿Restablecer ajustes?")) return;
-                    await resetSettings();
-                    await loadSettings();
-                  }}
-                  className="px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-white transition-all italic"
-                 >
-                   Restablecer
-                 </button>
-                 <button 
+              <div className="flex justify-between items-center border-t border-white/10 pt-10">
+                <div className="flex gap-4">
+                  <button
+                    onClick={handleResetHistory}
+                    className="flex items-center gap-2 px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all italic"
+                  >
+                    <Trash2 className="w-4 h-4" /> Reset BBDD
+                  </button>
+                  <button
+                    onClick={handleResetSettings}
+                    className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-white transition-all italic"
+                  >
+                    Restablecer Ajustes
+                  </button>
+                </div>
+                <button
                   onClick={async () => {
                     if (!editingSettings) return;
                     await updateSettings(editingSettings);
@@ -1163,9 +1184,9 @@ export default function Dashboard() {
                     alert("Ajustes guardados correctamente");
                   }}
                   className="px-10 py-3 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all italic"
-                 >
-                   Guardar Cambios
-                 </button>
+                >
+                  Guardar Cambios
+                </button>
               </div>
             </motion.div>
           )}
@@ -1202,7 +1223,7 @@ export default function Dashboard() {
                   <input
                     type="text"
                     value={newTemplate.name}
-                    onChange={(e) => setNewTemplate({...newTemplate, name: e.target.value})}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
                     placeholder="Ej: Reunión de empresa, Resumen ejecutivo..."
                     className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-amber-500/40 transition-all"
                   />
@@ -1212,7 +1233,7 @@ export default function Dashboard() {
                   <input
                     type="text"
                     value={newTemplate.description}
-                    onChange={(e) => setNewTemplate({...newTemplate, description: e.target.value})}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
                     placeholder="Breve descripción del formato..."
                     className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs focus:ring-2 focus:ring-amber-500/40 transition-all"
                   />
@@ -1221,7 +1242,7 @@ export default function Dashboard() {
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest italic">Instrucciones para la IA</label>
                   <textarea
                     value={newTemplate.body}
-                    onChange={(e) => setNewTemplate({...newTemplate, body: e.target.value})}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, body: e.target.value })}
                     placeholder="Instruye a la IA sobre cómo generar el resumen..."
                     className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm h-40 focus:ring-2 focus:ring-amber-500/40 transition-all resize-none"
                   />

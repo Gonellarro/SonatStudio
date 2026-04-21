@@ -389,6 +389,14 @@ def delete_entry(entry_uuid: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted"}
 
+@app.delete("/history")
+def reset_history(db: Session = Depends(get_db)):
+    db.query(TranscriptionEntry).delete()
+    db.commit()
+    return {"status": "history reset"}
+
+
+
 @app.get("/templates")
 def get_templates(db: Session = Depends(get_db)):
     return db.query(SummaryTemplate).all()

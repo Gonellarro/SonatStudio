@@ -1,0 +1,68 @@
+services:
+
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sonat-studio-stt
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+      - /dev/dri/card1:/dev/dri/card1
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    tmpfs:
+      - /root/.cache/mesa_shader_cache
+    group_add:
+      - "44" # video  — ajusta si tu host devuelve otro valor
+      - "110" # render — ajusta si tu host devuelve otro valor
+    volumes:
+      - ./models:/whisper/models
+    ports:
+      - "9080:8080"
+    environment:
+      - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
+      - GGML_VK_VISIBLE_DEVICES=0
+    mem_limit: 8g
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sonat-studio-api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - WHISPER_API_URL=${WHISPER_API_URL}
+      - LM_STUDIO_URL=${LM_STUDIO_URL}
+      - TRANSLATION_MODEL=${TRANSLATION_MODEL}
+      - SUMMARY_MODEL=${SUMMARY_MODEL}
+      - TRANSLATION_TEMP=${TRANSLATION_TEMP}
+      - SUMMARY_TEMP=${SUMMARY_TEMP}
+      - MAX_CHUNK_WORDS=${MAX_CHUNK_WORDS}
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    depends_on:
+      - whisper
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sonat-studio-ui
+    restart: unless-stopped
+    command: npm run dev
+    ports:
+      - "5000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - WATCHPACK_POLLING=true
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend

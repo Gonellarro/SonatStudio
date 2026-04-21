@@ -1,0 +1,10 @@
+# medium-q5_0 (recomendado, el que está configurado)
+wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin
+
+# Si prefieres large-v3 para máxima calidad
+wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin
+```
+
+Si bajas el `large-v3`, recuerda cambiar también la línea del CMD en el Dockerfile:
+```
+--model", "models/ggml-large-v3-q5_0.bin
